@@ -1,0 +1,237 @@
+# Maintainer: Coolcord <coolcord24@tutanota.com>
+
+pkgname=level-headed-git
+pkgver=0.3.10.r21.g7d15a9d
+pkgrel=1
+pkgdesc="Random Level Generator and Level Script Compiler for Super Mario Bros. 1 on the NES (git version)"
+arch=('x86_64')
+url="https://github.com/Coolcord/Level-Headed"
+license=('GPL3')
+
+depends=(
+    'qt6-base'
+    'rsync'
+)
+
+makedepends=(
+    'cmake'
+    'git'
+    'imagemagick'
+    'ninja'
+)
+
+provides=('level-headed-git')
+conflicts=('level-headed' 'level-headed-git')
+
+source=(
+    "Level-Headed::git+https://github.com/Coolcord/Level-Headed.git"
+    "Level-Headed_Data::git+https://github.com/Coolcord/Level-Headed_Data.git"
+    "Hexagon::git+https://github.com/Coolcord/Hexagon.git"
+    "Sequential_Archive::git+https://github.com/Coolcord/Sequential_Archive.git"
+    "C_Common_Code::git+https://github.com/Coolcord/C_Common_Code.git"
+)
+
+sha256sums=(
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+    'SKIP'
+)
+
+pkgver() {
+    cd "${srcdir}/Level-Headed"
+    git describe --long --tags --abbrev=7 |
+        sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+prepare() {
+    cd "${srcdir}/Sequential_Archive/Sequential_Archive_Manager"
+    sed -i 's/WIN32 //g' CMakeLists.txt
+
+    for f in \
+        "${srcdir}/Level-Headed/SMB1/SMB1_Compliance_Generator/CMakeLists.txt"
+    do
+        sed -i 's/-Werror//g' "$f"
+    done
+}
+
+build() {
+    export CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)"
+    export CXXFLAGS+=" -ffile-prefix-map=${srcdir}=."
+    export CFLAGS+=" -ffile-prefix-map=${srcdir}=."
+
+    cmake \
+        -S "${srcdir}/Level-Headed/Level-Headed" \
+        -B "${srcdir}/build-level-headed" \
+        -G Ninja
+    cmake --build "${srcdir}/build-level-headed"
+
+    cmake \
+        -S "${srcdir}/Level-Headed/SMB1/SMB1_Compliance_Generator" \
+        -B "${srcdir}/build-smb1-generator" \
+        -G Ninja
+    cmake --build "${srcdir}/build-smb1-generator"
+
+    cmake \
+        -S "${srcdir}/Level-Headed/SMB1/SMB1_Compliance_To_SMB1" \
+        -B "${srcdir}/build-smb1-interpreter" \
+        -G Ninja
+    cmake --build "${srcdir}/build-smb1-interpreter"
+
+    cmake \
+        -S "${srcdir}/Level-Headed/SMB1/SMB1_Writer" \
+        -B "${srcdir}/build-smb1-writer" \
+        -G Ninja
+    cmake --build "${srcdir}/build-smb1-writer"
+
+    cmake \
+        -S "${srcdir}/Hexagon/Hexagon" \
+        -B "${srcdir}/build-hexagon" \
+        -G Ninja
+    cmake --build "${srcdir}/build-hexagon"
+
+    cmake \
+        -S "${srcdir}/Sequential_Archive/Sequential_Archive" \
+        -B "${srcdir}/build-sequential-archive" \
+        -G Ninja
+    cmake --build "${srcdir}/build-sequential-archive"
+
+    cmake \
+        -S "${srcdir}/Sequential_Archive/Sequential_Archive_Manager" \
+        -B "${srcdir}/build-sam" \
+        -G Ninja
+    cmake --build "${srcdir}/build-sam"
+}
+
+package() {
+    export QT_QPA_PLATFORM=offscreen
+
+    local runtime="${pkgdir}/usr/lib/level-headed"
+
+    install -dm755 "${runtime}"
+
+    install -dm755 "${runtime}/Data/SMB1"
+    install -dm755 "${runtime}/Levels/SMB1"
+    install -dm755 "${runtime}/Plugins"
+    install -dm755 "${runtime}/Plugins/Generators"
+    install -dm755 "${runtime}/Plugins/Interpreters"
+    install -dm755 "${runtime}/Plugins/Writers"
+
+    install -Dm755 \
+        "${srcdir}/build-level-headed/Level-Headed" \
+        "${runtime}/Level-Headed"
+
+    install -Dm755 \
+        "${srcdir}/build-smb1-generator/libSMB1_Compliance_Generator.so" \
+        "${runtime}/Plugins/Generators/SMB1_Compliance_Generator.so"
+
+    install -Dm755 \
+        "${srcdir}/build-smb1-interpreter/libSMB1_Compliance_To_SMB1.so" \
+        "${runtime}/Plugins/Interpreters/SMB1_Compliance_To_SMB1.so"
+
+    install -Dm755 \
+        "${srcdir}/build-smb1-writer/libSMB1_Writer.so" \
+        "${runtime}/Plugins/Writers/SMB1_Writer.so"
+
+    install -Dm755 \
+        "${srcdir}/build-hexagon/libHexagon.so" \
+        "${runtime}/Plugins/Hexagon.so"
+
+    install -Dm755 \
+        "${srcdir}/build-sequential-archive/libSequential_Archive.so" \
+        "${runtime}/Plugins/Sequential_Archive.so"
+
+    mkdir -p "${srcdir}/build-sam/Plugins"
+    cp \
+        "${srcdir}/build-sequential-archive/libSequential_Archive.so" \
+        "${srcdir}/build-sam/Plugins/Sequential_Archive.so"
+
+    "${srcdir}/build-sam/Sequential_Archive_Manager" \
+        --pack \
+        "${srcdir}/Level-Headed_Data/Graphics" \
+        "${runtime}/Data/SMB1/Graphics.sa"
+
+    "${srcdir}/build-sam/Sequential_Archive_Manager" \
+        --pack \
+        "${srcdir}/Level-Headed_Data/Music" \
+        "${runtime}/Data/SMB1/Music.sa"
+
+    "${srcdir}/build-sam/Sequential_Archive_Manager" \
+        --pack \
+        "${srcdir}/Level-Headed_Data/ROMs" \
+        "${runtime}/Data/SMB1/ROMs.sa"
+
+    "${srcdir}/build-sam/Sequential_Archive_Manager" \
+        --pack \
+        "${srcdir}/Level-Headed_Data/Text" \
+        "${runtime}/Data/SMB1/Text.sa"
+
+    "${srcdir}/build-sam/Sequential_Archive_Manager" \
+        --pack \
+        "${srcdir}/Level-Headed_Data/Level_Scripts/(Tech Demo) It Plays Itself" \
+        "${runtime}/Levels/SMB1/(Tech Demo) It Plays Itself.lvls"
+
+    "${srcdir}/build-sam/Sequential_Archive_Manager" \
+        --pack \
+        "${srcdir}/Level-Headed_Data/Level_Scripts/(Tech Demo) Powerup Test" \
+        "${runtime}/Levels/SMB1/(Tech Demo) Powerup Test.lvls"
+
+    "${srcdir}/build-sam/Sequential_Archive_Manager" \
+        --pack \
+        "${srcdir}/Level-Headed_Data/Level_Scripts/(Tech Demo) Vertical Limit Test" \
+        "${runtime}/Levels/SMB1/(Tech Demo) Vertical Limit Test.lvls"
+
+    "${srcdir}/build-sam/Sequential_Archive_Manager" \
+        --pack \
+        "${srcdir}/Level-Headed_Data/Level_Scripts/Super Mario Bros. 1 (Modified Original Levels)" \
+        "${runtime}/Levels/SMB1/Super Mario Bros. 1 (Modified Original Levels).lvls"
+
+    printf '%s\n' "${pkgver}-${pkgrel}" > "${runtime}/.package-version"
+
+    install -Dm755 /dev/stdin "${pkgdir}/usr/bin/level-headed" <<'EOF'
+#!/bin/sh
+
+SYSTEM_DIR="/usr/lib/level-headed"
+USER_DIR="$HOME/.coolcord/level-headed"
+
+mkdir -p "$USER_DIR"
+
+SYSTEM_VER="$(cat "$SYSTEM_DIR/.package-version" 2>/dev/null)"
+USER_VER="$(cat "$USER_DIR/.package-version" 2>/dev/null)"
+
+if [ ! -d "$USER_DIR" ] || [ -z "$USER_VER" ]; then
+    rsync -a "$SYSTEM_DIR"/ "$USER_DIR"/
+elif [ "$SYSTEM_VER" != "$USER_VER" ]; then
+    rsync -a --exclude='*.cfg' "$SYSTEM_DIR"/ "$USER_DIR"/
+    printf '%s\n' "$SYSTEM_VER" > "$USER_DIR/.package-version"
+fi
+
+cd "$USER_DIR" || exit 1
+exec ./Level-Headed "$@"
+EOF
+
+    magick \
+        "${srcdir}/Level-Headed/Level-Headed/Level-Headed_Icon.ico" \
+        "${srcdir}/level-headed.png"
+
+    install -Dm644 \
+        "${srcdir}/level-headed.png" \
+        "${pkgdir}/usr/share/pixmaps/level-headed.png"
+
+    install -Dm644 /dev/stdin \
+        "${pkgdir}/usr/share/applications/level-headed.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Name=Level-Headed
+Comment=Random Level Generator for Super Mario Bros. 1
+Exec=level-headed
+Icon=level-headed
+Terminal=false
+Type=Application
+Categories=Game;
+Keywords=Mario;NES;Level Generator;
+StartupNotify=true
+EOF
+}
+

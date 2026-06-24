@@ -1,0 +1,134 @@
+# Maintainer: Coolcord <coolcord24@tutanota.com>
+
+pkgname=hexagon-git
+pkgver=1.1.2.r3.g073a2ec
+pkgrel=1
+pkgdesc="Simple Plain Text Hexadecimal Patcher (git version)"
+arch=('x86_64')
+url="https://github.com/Coolcord/Hexagon"
+license=('GPL3')
+
+depends=(
+    'qt6-base'
+    'rsync'
+)
+
+makedepends=(
+    'cmake'
+    'git'
+    'ninja'
+    'imagemagick'
+)
+
+provides=('hexagon-git')
+conflicts=('hexagon' 'hexagon-git')
+
+source=(
+    "Hexagon::git+https://github.com/Coolcord/Hexagon.git"
+    "C_Common_Code::git+https://github.com/Coolcord/C_Common_Code.git"
+)
+
+sha256sums=(
+    'SKIP'
+    'SKIP'
+)
+
+pkgver() {
+    cd "${srcdir}/Hexagon"
+    git describe --long --tags --abbrev=7 |
+        sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+build() {
+    export CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)"
+    export CXXFLAGS+=" -ffile-prefix-map=${srcdir}=."
+    export CFLAGS+=" -ffile-prefix-map=${srcdir}=."
+
+    # Build library
+    cmake \
+        -S "${srcdir}/Hexagon/Hexagon" \
+        -B "${srcdir}/build-hexagon-lib" \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release
+
+    cmake --build "${srcdir}/build-hexagon-lib"
+
+    # Build GUI
+    cmake \
+        -S "${srcdir}/Hexagon/Hexagon_GUI" \
+        -B "${srcdir}/build-hexagon-gui" \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release
+
+    cmake --build "${srcdir}/build-hexagon-gui"
+}
+
+package() {
+    local runtime="${pkgdir}/usr/lib/hexagon"
+
+    install -dm755 "${runtime}"
+    install -dm755 "${runtime}/Config"
+    install -dm755 "${runtime}/Plugins"
+
+    # Install and rename GUI binary
+    install -Dm755 \
+        "${srcdir}/build-hexagon-gui/Hexagon_GUI" \
+        "${runtime}/Hexagon"
+
+    # Install and rename library into Plugins
+    install -Dm755 \
+        "${srcdir}/build-hexagon-lib/libHexagon.so" \
+        "${runtime}/Plugins/Hexagon.so"
+
+    # Version file for launcher update system
+    printf '%s\n' "${pkgver}-${pkgrel}" > "${runtime}/.package-version"
+
+    # Launcher script (user-local copy system)
+    install -Dm755 /dev/stdin \
+        "${pkgdir}/usr/bin/hexagon" <<'EOF'
+#!/bin/sh
+
+SYSTEM_DIR="/usr/lib/hexagon"
+USER_DIR="$HOME/.coolcord/hexagon"
+
+mkdir -p "$USER_DIR"
+
+SYSTEM_VER="$(cat "$SYSTEM_DIR/.package-version" 2>/dev/null)"
+USER_VER="$(cat "$USER_DIR/.package-version" 2>/dev/null)"
+
+if [ ! -d "$USER_DIR" ] || [ -z "$USER_VER" ]; then
+    rsync -a "$SYSTEM_DIR"/ "$USER_DIR"/
+
+elif [ "$SYSTEM_VER" != "$USER_VER" ]; then
+    rsync -a --exclude='*.cfg' "$SYSTEM_DIR"/ "$USER_DIR"/
+    printf '%s\n' "$SYSTEM_VER" > "$USER_DIR/.package-version"
+fi
+
+cd "$USER_DIR" || exit 1
+exec ./Hexagon "$@"
+EOF
+
+    # Icon
+    magick \
+        "${srcdir}/Hexagon/Hexagon_GUI/Hexagon_GUI.ico" \
+        "${srcdir}/hexagon.png"
+
+    install -Dm644 \
+        "${srcdir}/hexagon.png" \
+        "${pkgdir}/usr/share/pixmaps/hexagon.png"
+
+    # Desktop entry
+    install -Dm644 /dev/stdin \
+        "${pkgdir}/usr/share/applications/hexagon.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Name=Hexagon
+Comment=Simple Plain Text Hexadecimal Patcher
+Exec=hexagon
+Icon=hexagon
+Terminal=false
+Type=Application
+Categories=Utility;
+StartupNotify=true
+EOF
+}

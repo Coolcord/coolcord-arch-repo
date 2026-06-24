@@ -1,0 +1,111 @@
+# Maintainer: Coolcord <coolcord24@tutanota.com>
+
+pkgname=trake
+pkgver=1.1.0
+pkgrel=1
+pkgdesc="Competitive Tron and Snake Game"
+arch=('x86_64')
+url="https://github.com/Coolcord/Trake"
+license=('GPL3')
+
+depends=(
+    'allegro'
+    'rsync'
+)
+
+makedepends=(
+    'git'
+    'imagemagick'
+)
+
+provides=('trake')
+conflicts=('trake-git')
+
+source=("Trake::git+https://github.com/Coolcord/Trake.git")
+
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/Trake/Linux"
+
+    export CXXFLAGS+=" -O2"
+    export CFLAGS+=" -O2"
+
+    make -j"$(nproc)"
+}
+
+package() {
+    local runtime="${pkgdir}/usr/lib/trake"
+
+    install -dm755 "${runtime}"
+
+    # Main executable
+    install -Dm755 \
+        "${srcdir}/Trake/Linux/Trake" \
+        "${runtime}/Trake"
+
+    # Runtime assets
+    cp -r \
+        "${srcdir}/Trake/Linux/fonts" \
+        "${runtime}/"
+
+    cp -r \
+        "${srcdir}/Trake/Linux/music" \
+        "${runtime}/"
+
+    cp -r \
+        "${srcdir}/Trake/Linux/sounds" \
+        "${runtime}/"
+
+    # Version file used by launcher updater logic
+    printf '%s\n' "${pkgver}-${pkgrel}" > "${runtime}/.package-version"
+
+    # Launcher script
+    install -Dm755 /dev/stdin \
+        "${pkgdir}/usr/bin/trake" <<'EOF'
+#!/bin/sh
+
+SYSTEM_DIR="/usr/lib/trake"
+USER_DIR="$HOME/.coolcord/trake"
+
+mkdir -p "$USER_DIR"
+
+SYSTEM_VER="$(cat "$SYSTEM_DIR/.package-version" 2>/dev/null)"
+USER_VER="$(cat "$USER_DIR/.package-version" 2>/dev/null)"
+
+if [ ! -f "$USER_DIR/.package-version" ]; then
+    rsync -a "$SYSTEM_DIR"/ "$USER_DIR"/
+
+elif [ "$SYSTEM_VER" != "$USER_VER" ]; then
+    rsync -a --exclude='*.cfg' "$SYSTEM_DIR"/ "$USER_DIR"/
+    printf '%s\n' "$SYSTEM_VER" > "$USER_DIR/.package-version"
+fi
+
+cd "$USER_DIR" || exit 1
+exec ./Trake "$@"
+EOF
+
+    # Convert icon
+    magick \
+        "${srcdir}/Trake/Linux/Trake.ico" \
+        "${srcdir}/trake.png"
+
+    install -Dm644 \
+        "${srcdir}/trake.png" \
+        "${pkgdir}/usr/share/pixmaps/trake.png"
+
+    # Desktop entry
+    install -Dm644 /dev/stdin \
+        "${pkgdir}/usr/share/applications/trake.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Name=Trake
+Comment=Competitive Tron and Snake Game
+Exec=trake
+Icon=trake
+Terminal=false
+Type=Application
+Categories=Game;ArcadeGame;
+StartupNotify=true
+EOF
+}

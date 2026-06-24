@@ -1,0 +1,66 @@
+# Maintainer: Coolcord <coolcord24@tutanota.com>
+
+pkgname=space-invaders-gpl
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Space Invaders clone written in the Game Programming Language (GPL)"
+arch=('x86_64')
+url="https://github.com/Coolcord/Space_Invaders_GPL"
+license=('GPL3')
+
+depends=()
+
+makedepends=(
+    'git'
+)
+
+provides=('space-invaders-gpl')
+conflicts=('space-invaders-gpl-git')
+
+source=("Space_Invaders_GPL::git+https://github.com/Coolcord/Space_Invaders_GPL.git")
+
+sha256sums=('SKIP')
+
+build() {
+    :
+}
+
+package() {
+    local gamedir="${pkgdir}/usr/share/space-invaders-gpl"
+
+    install -dm755 "${gamedir}"
+
+    # Install entire game directory
+    cp -a "${srcdir}/Space_Invaders_GPL/." "${gamedir}/"
+
+    # Ensure GPL runtime is executable
+    chmod 755 "${gamedir}/gpl"
+
+    # Launcher
+    install -Dm755 /dev/stdin \
+        "${pkgdir}/usr/bin/space-invaders-gpl" <<'EOF'
+#!/bin/sh
+cd /usr/share/space-invaders-gpl || exit 1
+exec ./gpl ./SpaceInvaders.gpl "$@"
+EOF
+
+    # Icon
+    install -Dm644 \
+        "${srcdir}/Space_Invaders_GPL/SpaceInvaders.png" \
+        "${pkgdir}/usr/share/pixmaps/space-invaders-gpl.png"
+
+    # Desktop entry
+    install -Dm644 /dev/stdin \
+        "${pkgdir}/usr/share/applications/space-invaders-gpl.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Name=Space Invaders GPL
+Comment=Space Invaders clone
+Exec=space-invaders-gpl
+Icon=space-invaders-gpl
+Terminal=false
+Type=Application
+Categories=Game;
+StartupNotify=true
+EOF
+}

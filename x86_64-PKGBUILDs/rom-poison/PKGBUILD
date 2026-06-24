@@ -1,0 +1,107 @@
+# Maintainer: Coolcord <coolcord24@tutanota.com>
+
+pkgname=rom-poison
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Easily corrupt ROMs or files in a few clicks"
+arch=('x86_64')
+url="https://github.com/Coolcord/ROM_Poison"
+license=('GPL3')
+
+depends=(
+    'qt5-base'
+    'rsync'
+)
+
+makedepends=(
+    'git'
+    'qt5-base'
+    'qt5-tools'
+    'imagemagick'
+)
+
+provides=('rom-poison')
+conflicts=('rom-poison' 'rom-poison-git')
+
+source=(
+    "ROM_Poison::git+https://github.com/Coolcord/ROM_Poison.git#tag=v${pkgver}"
+)
+
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/ROM_Poison"
+
+    export CXXFLAGS+=" -O2 -Wno-error=deprecated-declarations"
+    export CFLAGS+=" -O2"
+
+    # Use correct Qt project file
+    qmake ROM_Poison.pro
+
+    # Build
+    make -j"$(nproc)"
+}
+
+package() {
+    local runtime="${pkgdir}/usr/lib/rom-poison"
+
+    install -dm755 "${runtime}"
+    install -dm755 "${runtime}/Profiles"
+
+    # Install binary (output from qmake build)
+    install -Dm755 \
+        "${srcdir}/ROM_Poison/ROM_Poison" \
+        "${runtime}/ROM_Poison"
+
+    # Version file for updater system
+    printf '%s\n' "${pkgver}-${pkgrel}" > "${runtime}/.package-version"
+
+    # Launcher script
+    install -Dm755 /dev/stdin \
+        "${pkgdir}/usr/bin/rom-poison" <<'EOF'
+#!/bin/sh
+
+SYSTEM_DIR="/usr/lib/rom-poison"
+USER_DIR="$HOME/.coolcord/rom-poison"
+
+mkdir -p "$USER_DIR"
+
+SYSTEM_VER="$(cat "$SYSTEM_DIR/.package-version" 2>/dev/null)"
+USER_VER="$(cat "$USER_DIR/.package-version" 2>/dev/null)"
+
+if [ ! -d "$USER_DIR" ] || [ -z "$USER_VER" ]; then
+    rsync -a "$SYSTEM_DIR"/ "$USER_DIR"/
+
+elif [ "$SYSTEM_VER" != "$USER_VER" ]; then
+    rsync -a --exclude='*.cfg' "$SYSTEM_DIR"/ "$USER_DIR"/
+    printf '%s\n' "$SYSTEM_VER" > "$USER_DIR/.package-version"
+fi
+
+cd "$USER_DIR" || exit 1
+exec ./ROM_Poison "$@"
+EOF
+
+    # Icon conversion
+    magick \
+        "${srcdir}/ROM_Poison/ROM_Corruptor_Icon.ico" \
+        "${srcdir}/rom-poison.png"
+
+    install -Dm644 \
+        "${srcdir}/rom-poison.png" \
+        "${pkgdir}/usr/share/pixmaps/rom-poison.png"
+
+    # Desktop entry
+    install -Dm644 /dev/stdin \
+        "${pkgdir}/usr/share/applications/rom-poison.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Name=ROM Poison
+Comment=ROM Corruptor
+Exec=rom-poison
+Icon=rom-poison
+Terminal=false
+Type=Application
+Categories=Utility;
+StartupNotify=true
+EOF
+}

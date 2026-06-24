@@ -1,0 +1,127 @@
+# Maintainer: Coolcord <coolcord24@tutanota.com>
+
+pkgname=sam
+pkgver=1.1.2
+pkgrel=1
+pkgdesc="Sequential Archive Manager"
+arch=('x86_64')
+url="https://github.com/Coolcord/Sequential_Archive"
+license=('GPL3')
+
+depends=(
+    'qt6-base'
+    'rsync'
+)
+
+makedepends=(
+    'cmake'
+    'git'
+    'ninja'
+    'imagemagick'
+)
+
+provides=('sam')
+conflicts=('sam' 'sam-git')
+
+source=(
+    "SAM::git+https://github.com/Coolcord/Sequential_Archive.git#tag=v1.1.2"
+    "C_Common_Code::git+https://github.com/Coolcord/C_Common_Code.git#commit=53d15d76cb1171537becc144960721fc472505a8"
+)
+
+sha256sums=(
+    'SKIP'
+    'SKIP'
+)
+
+build() {
+    export CMAKE_BUILD_PARALLEL_LEVEL="$(nproc)"
+    export CXXFLAGS+=" -ffile-prefix-map=${srcdir}=."
+    export CFLAGS+=" -ffile-prefix-map=${srcdir}=."
+
+    # Build core library
+    cmake \
+        -S "${srcdir}/SAM/Sequential_Archive" \
+        -B "${srcdir}/build-sam-lib" \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release
+
+    cmake --build "${srcdir}/build-sam-lib"
+
+    # Build GUI
+    cmake \
+        -S "${srcdir}/SAM/Sequential_Archive_Manager" \
+        -B "${srcdir}/build-sam-gui" \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release
+
+    cmake --build "${srcdir}/build-sam-gui"
+}
+
+package() {
+    local runtime="${pkgdir}/usr/lib/sam"
+
+    install -dm755 "${runtime}"
+    install -dm755 "${runtime}/Plugins"
+
+    # Install GUI binary (renamed to SAM)
+    install -Dm755 \
+        "${srcdir}/build-sam-gui/Sequential_Archive_Manager" \
+        "${runtime}/SAM"
+
+    # Install plugin library
+    install -Dm755 \
+        "${srcdir}/build-sam-lib/libSequential_Archive.so" \
+        "${runtime}/Plugins/Sequential_Archive.so"
+
+    # Version file for updater system
+    printf '%s\n' "${pkgver}-${pkgrel}" > "${runtime}/.package-version"
+
+    # Launcher script
+    install -Dm755 /dev/stdin \
+        "${pkgdir}/usr/bin/sam" <<'EOF'
+#!/bin/sh
+
+SYSTEM_DIR="/usr/lib/sam"
+USER_DIR="$HOME/.coolcord/sam"
+
+mkdir -p "$USER_DIR"
+
+SYSTEM_VER="$(cat "$SYSTEM_DIR/.package-version" 2>/dev/null)"
+USER_VER="$(cat "$USER_DIR/.package-version" 2>/dev/null)"
+
+if [ ! -d "$USER_DIR" ] || [ -z "$USER_VER" ]; then
+    rsync -a "$SYSTEM_DIR"/ "$USER_DIR"/
+
+elif [ "$SYSTEM_VER" != "$USER_VER" ]; then
+    rsync -a --exclude='*.cfg' "$SYSTEM_DIR"/ "$USER_DIR"/
+    printf '%s\n' "$SYSTEM_VER" > "$USER_DIR/.package-version"
+fi
+
+cd "$USER_DIR" || exit 1
+exec ./SAM "$@"
+EOF
+
+    # Icon conversion
+    magick \
+        "${srcdir}/SAM/Sequential_Archive_Manager/Sequential_Archive_Icon.ico" \
+        "${srcdir}/sam.png"
+
+    install -Dm644 \
+        "${srcdir}/sam.png" \
+        "${pkgdir}/usr/share/pixmaps/sam.png"
+
+    # Desktop entry
+    install -Dm644 /dev/stdin \
+        "${pkgdir}/usr/share/applications/sam.desktop" <<'EOF'
+[Desktop Entry]
+Version=1.0
+Name=SAM
+Comment=Sequential Archive Manager
+Exec=sam
+Icon=sam
+Terminal=false
+Type=Application
+Categories=Utility;
+StartupNotify=true
+EOF
+}
