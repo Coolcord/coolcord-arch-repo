@@ -1,0 +1,25 @@
+# Maintainer: Coolcord <coolcord24@tutanota.com>
+
+pkgname=update-steam-play
+pkgver=r15
+pkgrel=1
+pkgdesc='A quick and dirty bash script to manage and update Steam Play versions on Linux'
+arch=('any')
+url='https://github.com/Coolcord/update-steam-play'
+license=('GPL3')
+depends=('bash' 'curl' 'jq')
+makedepends=('git')
+
+source=("git+https://github.com/Coolcord/update-steam-play.git#branch=master")
+b2sums=('SKIP')
+
+pkgver() {
+    cd "$srcdir/$pkgname"
+    printf 'r%s' "$(git rev-list --count HEAD)"
+}
+
+package() {
+    install -Dm755 "$srcdir/$pkgname/update-steam-play" \
+        "$pkgdir/usr/bin/update-steam-play"
+}
+
