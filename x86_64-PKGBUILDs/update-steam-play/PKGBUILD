@@ -1,7 +1,7 @@
 # Maintainer: Coolcord <coolcord24@tutanota.com>
 
 pkgname=update-steam-play
-pkgver=r15
+pkgver=r16
 pkgrel=1
 pkgdesc='A quick and dirty bash script to manage and update Steam Play versions on Linux'
 arch=('any')
